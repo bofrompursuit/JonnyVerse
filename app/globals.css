@@ -202,11 +202,19 @@
 .track-scroll-container {
   contain: content;
   -webkit-overflow-scrolling: touch;
+  will-change: scroll-position;
+  transform: translateZ(0);
 }
 
+/*
+ * Deliberately no content-visibility/contain-intrinsic-size here: the
+ * marquee rows already cap DOM size via virtualization, and pairing
+ * content-visibility: auto with the loop's periodic scrollLeft jump made
+ * freshly-mounted cards skip their first paint — the visible "pop" on
+ * reset. will-change promotes each card to its own compositor layer
+ * without that lazy-paint tradeoff.
+ */
 .track-tile-wrapper {
-  content-visibility: auto;
-  contain-intrinsic-size: 0 120px;
   will-change: transform;
 }
 

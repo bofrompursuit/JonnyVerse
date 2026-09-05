@@ -62,7 +62,6 @@ interface MarqueeRowControls {
   ref: React.RefObject<HTMLDivElement | null>;
   pause: () => void;
   resumeSoon: () => void;
-  handleScroll: () => void;
 }
 
 function makeRowControls(
@@ -82,17 +81,15 @@ function makeRowControls(
         interacting.current = false;
       }, 2000);
     },
-    handleScroll() {
-      const el = ref.current;
-      if (!el) return;
-      const setWidth = el.scrollWidth / 3;
-      if (el.scrollLeft < setWidth * 0.5) {
-        el.scrollLeft += setWidth;
-      } else if (el.scrollLeft > setWidth * 1.5) {
-        el.scrollLeft -= setWidth;
-      }
-    },
   };
+}
+
+/** Keeps scrollLeft inside the middle (2nd) of 3 tripled copies, wrapping by
+ *  exactly one copy-width so the jump lands on visually identical content. */
+function wrapScrollPosition(el: HTMLDivElement) {
+  const setWidth = el.scrollWidth / 3;
+  if (el.scrollLeft >= setWidth * 2) el.scrollLeft -= setWidth;
+  else if (el.scrollLeft <= 0) el.scrollLeft += setWidth;
 }
 
 /**
@@ -100,6 +97,15 @@ function makeRowControls(
  * scheduling overhead of two independent loops) using delta-time-based
  * movement, so the two rows are guaranteed the exact same pixel velocity
  * regardless of frame rate — they just apply it with opposite sign.
+ *
+ * The wrap-around correction is the *only* place either row's scrollLeft
+ * gets reset, and it runs unconditionally every frame (auto-scrolling or
+ * user-dragging) using the same tight boundary. A second, looser threshold
+ * used to live on the container's native `scroll` event and fire on every
+ * one of these frame updates too — since it disagreed with this one, it
+ * pre-empted it and reset the row twice as often as necessary, which is
+ * what caused the visible "pop" as the virtualizer scrambled to mount a
+ * fresh batch of cards. One authority, tight boundary, no double-reset.
  */
 function useTwinMarquee(active: boolean) {
   const row1Ref = useRef<HTMLDivElement>(null);
@@ -142,17 +148,13 @@ function useTwinMarquee(active: boolean) {
       lastTime = time;
       const distance = AUTO_SCROLL_PX_PER_SEC * delta;
 
-      if (visible1 && !interacting1.current) {
-        const setWidth = el1.scrollWidth / 3;
-        el1.scrollLeft += distance;
-        if (el1.scrollLeft >= setWidth * 2) el1.scrollLeft -= setWidth;
-        else if (el1.scrollLeft <= 0) el1.scrollLeft += setWidth;
+      if (visible1) {
+        if (!interacting1.current) el1.scrollLeft += distance;
+        wrapScrollPosition(el1);
       }
-      if (visible2 && !interacting2.current) {
-        const setWidth = el2.scrollWidth / 3;
-        el2.scrollLeft -= distance;
-        if (el2.scrollLeft >= setWidth * 2) el2.scrollLeft -= setWidth;
-        else if (el2.scrollLeft <= 0) el2.scrollLeft += setWidth;
+      if (visible2) {
+        if (!interacting2.current) el2.scrollLeft -= distance;
+        wrapScrollPosition(el2);
       }
       raf = requestAnimationFrame(tick);
     };
@@ -243,7 +245,6 @@ const TrackTile = memo(function TrackTile({
 function MarqueeRow({
   items,
   scrollRef,
-  onScroll,
   onPointerDown,
   onPointerUp,
   onPointerLeave,
@@ -257,7 +258,6 @@ function MarqueeRow({
 }: {
   items: Track[];
   scrollRef: React.RefObject<HTMLDivElement | null>;
-  onScroll: () => void;
   onPointerDown: () => void;
   onPointerUp: () => void;
   onPointerLeave: () => void;
@@ -274,13 +274,12 @@ function MarqueeRow({
     getScrollElement: () => scrollRef.current,
     estimateSize: () => cardStep,
     horizontal: true,
-    overscan: 6,
+    overscan: 10,
   });
 
   return (
     <div
       ref={scrollRef}
-      onScroll={onScroll}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerLeave}
@@ -295,7 +294,7 @@ function MarqueeRow({
             <div
               key={`${rowLabel}-${track.id}-${virtualItem.index}`}
               className="track-tile-wrapper absolute top-0 left-0"
-              style={{ transform: `translateX(${virtualItem.start}px)` }}
+              style={{ transform: `translate3d(${virtualItem.start}px, 0, 0)` }}
             >
               <TrackTile track={track} isSelected={track.id === selectedId} onSelect={onSelect} />
             </div>
@@ -345,7 +344,7 @@ function SearchGrid({
             <div
               key={virtualRow.index}
               className="absolute top-0 left-0 flex gap-4 w-full"
-              style={{ transform: `translateY(${virtualRow.start}px)` }}
+              style={{ transform: `translate3d(0, ${virtualRow.start}px, 0)` }}
             >
               {rowItems.map((track) => (
                 <TrackTile key={track.id} track={track} isSelected={track.id === selectedId} onSelect={onSelect} />
@@ -499,7 +498,6 @@ export function MusicLibrarySection() {
             <MarqueeRow
               items={row1Looped}
               scrollRef={row1.ref}
-              onScroll={row1.handleScroll}
               onPointerDown={row1.pause}
               onPointerUp={row1.resumeSoon}
               onPointerLeave={row1.resumeSoon}
@@ -513,7 +511,6 @@ export function MusicLibrarySection() {
             <MarqueeRow
               items={row2Looped}
               scrollRef={row2.ref}
-              onScroll={row2.handleScroll}
               onPointerDown={row2.pause}
               onPointerUp={row2.resumeSoon}
               onPointerLeave={row2.resumeSoon}
