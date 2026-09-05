@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { signIn, signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { RequestDialog } from "./request-dialog";
@@ -14,6 +15,7 @@ const navLinks = [
 export function Navigation() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { data: session } = useSession();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -46,7 +48,6 @@ export function Navigation() {
           {/* Logo */}
           <a href="#" className="flex items-center gap-2 group">
             <span className={`font-display tracking-tight transition-all duration-500 ${isScrolled ? "text-xl" : "text-2xl"}`}>JonnyVerse</span>
-            <span className={`text-muted-foreground font-mono transition-all duration-500 ${isScrolled ? "text-[10px] mt-0.5" : "text-xs mt-1"}`}>DJ</span>
           </a>
 
           {/* Desktop Navigation */}
@@ -74,9 +75,36 @@ export function Navigation() {
               <span className="text-[#f97316] font-bold">$</span>
               Tip Your DJ
             </a>
-            <a href="#" className={`text-foreground/70 hover:text-foreground transition-all duration-500 ${isScrolled ? "text-xs" : "text-sm"}`}>
-              Sign in
-            </a>
+            {session?.user ? (
+              <button
+                type="button"
+                onClick={() => signOut()}
+                className={`flex items-center gap-2 text-foreground/70 hover:text-foreground transition-all duration-500 ${isScrolled ? "text-xs" : "text-sm"}`}
+                title="Sign out"
+              >
+                {session.user.image ? (
+                  <img
+                    src={session.user.image}
+                    alt={session.user.name ?? "Account"}
+                    className="w-6 h-6 rounded-full"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <span className="w-6 h-6 rounded-full bg-foreground/10 flex items-center justify-center text-[10px]">
+                    {(session.user.name ?? "U").charAt(0).toUpperCase()}
+                  </span>
+                )}
+                {session.user.name?.split(" ")[0] ?? "Account"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => signIn("google")}
+                className={`text-foreground/70 hover:text-foreground transition-all duration-500 ${isScrolled ? "text-xs" : "text-sm"}`}
+              >
+                Sign in
+              </button>
+            )}
             <RequestDialog
               kind="booking"
               trigger={
@@ -155,10 +183,28 @@ export function Navigation() {
             <div className="flex gap-4">
             <Button
               variant="outline"
-              className="flex-1 rounded-full h-14 text-base"
-              onClick={() => setIsMobileMenuOpen(false)}
+              className="flex-1 rounded-full h-14 text-base gap-2"
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                if (session?.user) signOut();
+                else signIn("google");
+              }}
             >
-              Sign in
+              {session?.user ? (
+                <>
+                  {session.user.image ? (
+                    <img
+                      src={session.user.image}
+                      alt=""
+                      className="w-6 h-6 rounded-full"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : null}
+                  {session.user.name?.split(" ")[0] ?? "Account"}
+                </>
+              ) : (
+                "Sign in"
+              )}
             </Button>
             <RequestDialog
               kind="booking"

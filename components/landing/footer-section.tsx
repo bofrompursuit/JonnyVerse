@@ -44,11 +44,10 @@ export function FooterSection() {
             <div className="col-span-2">
               <a href="#" className="inline-flex items-center gap-2 mb-6">
                 <span className="text-2xl font-display">JonnyVerse</span>
-                <span className="text-xs text-background/60 font-mono">DJ</span>
               </a>
 
               <p className="text-background/60 leading-relaxed mb-8 max-w-xs">
-                DJ Jonnypurse — mixes, bootcamp, and live shows. Your music, your verse.
+                DJ Jonnypurse — mixes, bootcamp, and live experience. Your music, your universe.
               </p>
 
               {/* Tip Your DJ */}

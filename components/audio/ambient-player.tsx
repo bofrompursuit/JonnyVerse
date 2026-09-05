@@ -3,21 +3,23 @@
 import { useEffect, useRef, useState } from "react";
 import { Volume2, VolumeX } from "lucide-react";
 
-// A generative, royalty-free four-on-the-floor club loop — synthesized live
-// in the browser with the Web Audio API. No audio file, nothing to license.
-const BPM = 126;
+// A generative, royalty-free disco/Latin groove — synthesized live in the
+// browser with the Web Audio API. No audio file, nothing to license.
+const BPM = 100;
 const STEP_SECONDS = 60 / BPM / 4; // 16th notes
 const STEPS_PER_BAR = 16;
 
-const KICK_STEPS = new Set([0, 4, 8, 12]);
+const KICK_STEPS = new Set([0, 4, 8, 12]); // disco's four-on-the-floor
 const CLOSED_HAT_STEPS = new Set([2, 6, 10, 14]);
 const OPEN_HAT_STEPS = new Set([15]);
 const BASS_STEPS = new Set([0, 3, 8, 11]);
-const STAB_STEPS = new Set([0, 8]);
+const STAB_STEPS = new Set([2, 6, 10, 14]); // chic-style upbeat guitar chop
+const COWBELL_STEPS = new Set([3, 6, 10, 13]); // clave-ish Latin/disco cowbell accent
 
-// A minor-ish stab chord and a pentatonic lead scale — keeps it melodic, not just percussive.
-const STAB_CHORD = [220, 261.63, 329.63]; // A3, C4, E4
-const LEAD_SCALE = [440, 493.88, 523.25, 587.33, 659.25, 783.99]; // A4..G5
+// A bright major stab chord and a major-pentatonic lead scale for a warmer,
+// more Latin/disco feel than a minor house lead.
+const STAB_CHORD = [220, 277.18, 329.63]; // A3, C#4, E4 (A major)
+const LEAD_SCALE = [220, 246.94, 277.18, 329.63, 369.99, 440]; // A major pentatonic
 
 export function AmbientPlayer() {
   const [playing, setPlaying] = useState(false);

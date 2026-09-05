@@ -109,8 +109,8 @@ export function HeroSection() {
               isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
             }`}
           >
-            From bootcamp fundamentals to festival mainstage — mixes,
-            training, and tour dates from DJ Jonnypurse.
+            A universe of bootcamp fundamentals to club dj sets — mixes,
+            training, and gig dates from DJ Jonnypurse.
           </p>
 
           {/* CTAs */}
@@ -158,7 +158,7 @@ export function HeroSection() {
               {[
                 { value: "Music Library", label: "curated sets & mixtapes" },
                 { value: "DJ Bootcamp", label: "learn to spin, live" },
-                { value: "Tour Dates", label: "book the next show" },
+                { value: "Gig Schedule", label: "book the next show" },
                 { value: "Community", label: "join the Discord" },
               ].map((stat) => (
                 <div key={stat.value} className="flex items-baseline gap-4">
