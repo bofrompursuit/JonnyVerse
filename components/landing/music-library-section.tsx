@@ -29,7 +29,7 @@ interface EngineTrack {
 }
 
 const SCROLL_STEP = 160; // card width (144) + gap (16)
-const AUTO_SCROLL_SPEED = 1.1;
+const AUTO_SCROLL_PX_PER_SEC = 66; // ~1.1px/frame @60fps, but frame-rate independent
 const CARD_GAP = 16;
 const CARD_WIDTH_MOBILE = 128; // w-32
 const CARD_WIDTH_DESKTOP = 144; // sm:w-36
@@ -58,73 +58,116 @@ function useCardStep() {
   return (isSmUp ? CARD_WIDTH_DESKTOP : CARD_WIDTH_MOBILE) + CARD_GAP;
 }
 
-/** Drives one infinitely-looping row: centers on mount, auto-scrolls, pauses on interaction. */
-function useMarqueeRow(direction: 1 | -1, active: boolean) {
-  const ref = useRef<HTMLDivElement>(null);
-  const interacting = useRef(false);
-  const resumeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+interface MarqueeRowControls {
+  ref: React.RefObject<HTMLDivElement | null>;
+  pause: () => void;
+  resumeSoon: () => void;
+  handleScroll: () => void;
+}
+
+function makeRowControls(
+  ref: React.RefObject<HTMLDivElement | null>,
+  interacting: React.RefObject<boolean>,
+  resumeTimeout: React.RefObject<ReturnType<typeof setTimeout> | null>,
+): MarqueeRowControls {
+  return {
+    ref,
+    pause() {
+      interacting.current = true;
+      if (resumeTimeout.current) clearTimeout(resumeTimeout.current);
+    },
+    resumeSoon() {
+      if (resumeTimeout.current) clearTimeout(resumeTimeout.current);
+      resumeTimeout.current = setTimeout(() => {
+        interacting.current = false;
+      }, 2000);
+    },
+    handleScroll() {
+      const el = ref.current;
+      if (!el) return;
+      const setWidth = el.scrollWidth / 3;
+      if (el.scrollLeft < setWidth * 0.5) {
+        el.scrollLeft += setWidth;
+      } else if (el.scrollLeft > setWidth * 1.5) {
+        el.scrollLeft -= setWidth;
+      }
+    },
+  };
+}
+
+/**
+ * Drives both infinitely-looping rows from a single rAF chain (half the
+ * scheduling overhead of two independent loops) using delta-time-based
+ * movement, so the two rows are guaranteed the exact same pixel velocity
+ * regardless of frame rate — they just apply it with opposite sign.
+ */
+function useTwinMarquee(active: boolean) {
+  const row1Ref = useRef<HTMLDivElement>(null);
+  const row2Ref = useRef<HTMLDivElement>(null);
+  const interacting1 = useRef(false);
+  const interacting2 = useRef(false);
+  const resumeTimeout1 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resumeTimeout2 = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const el = ref.current;
-    if (!el || !active) return;
-    el.scrollLeft = el.scrollWidth / 3;
+    if (!active) return;
+    const el1 = row1Ref.current;
+    const el2 = row2Ref.current;
+    if (el1) el1.scrollLeft = el1.scrollWidth / 3;
+    if (el2) el2.scrollLeft = el2.scrollWidth / 3;
   }, [active]);
 
   useEffect(() => {
-    const el = ref.current;
-    if (!el || !active) return;
+    const el1 = row1Ref.current;
+    const el2 = row2Ref.current;
+    if (!active || !el1 || !el2) return;
 
-    let visible = true;
-    const observer = new IntersectionObserver(([entry]) => {
-      visible = entry.isIntersecting;
+    let visible1 = true;
+    let visible2 = true;
+    const observer1 = new IntersectionObserver(([entry]) => {
+      visible1 = entry.isIntersecting;
     }, { threshold: 0 });
-    observer.observe(el);
+    const observer2 = new IntersectionObserver(([entry]) => {
+      visible2 = entry.isIntersecting;
+    }, { threshold: 0 });
+    observer1.observe(el1);
+    observer2.observe(el2);
 
     let raf: number;
+    let lastTime = 0;
 
-    const tick = () => {
-      if (visible && !interacting.current) {
-        const setWidth = el.scrollWidth / 3;
-        el.scrollLeft += direction * AUTO_SCROLL_SPEED;
-        if (el.scrollLeft >= setWidth * 2) {
-          el.scrollLeft -= setWidth;
-        } else if (el.scrollLeft <= 0) {
-          el.scrollLeft += setWidth;
-        }
+    const tick = (time: number) => {
+      // Clamp so a dropped/backgrounded frame doesn't cause a visible jump.
+      const delta = lastTime === 0 ? 0 : Math.min(time - lastTime, 100) / 1000;
+      lastTime = time;
+      const distance = AUTO_SCROLL_PX_PER_SEC * delta;
+
+      if (visible1 && !interacting1.current) {
+        const setWidth = el1.scrollWidth / 3;
+        el1.scrollLeft += distance;
+        if (el1.scrollLeft >= setWidth * 2) el1.scrollLeft -= setWidth;
+        else if (el1.scrollLeft <= 0) el1.scrollLeft += setWidth;
+      }
+      if (visible2 && !interacting2.current) {
+        const setWidth = el2.scrollWidth / 3;
+        el2.scrollLeft -= distance;
+        if (el2.scrollLeft >= setWidth * 2) el2.scrollLeft -= setWidth;
+        else if (el2.scrollLeft <= 0) el2.scrollLeft += setWidth;
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => {
-      observer.disconnect();
+      observer1.disconnect();
+      observer2.disconnect();
       cancelAnimationFrame(raf);
     };
-  }, [active, direction]);
+  }, [active]);
 
-  function pause() {
-    interacting.current = true;
-    if (resumeTimeout.current) clearTimeout(resumeTimeout.current);
-  }
-
-  function resumeSoon() {
-    if (resumeTimeout.current) clearTimeout(resumeTimeout.current);
-    resumeTimeout.current = setTimeout(() => {
-      interacting.current = false;
-    }, 2000);
-  }
-
-  function handleScroll() {
-    const el = ref.current;
-    if (!el) return;
-    const setWidth = el.scrollWidth / 3;
-    if (el.scrollLeft < setWidth * 0.5) {
-      el.scrollLeft += setWidth;
-    } else if (el.scrollLeft > setWidth * 1.5) {
-      el.scrollLeft -= setWidth;
-    }
-  }
-
-  return { ref, pause, resumeSoon, handleScroll };
+  return {
+    row1: makeRowControls(row1Ref, interacting1, resumeTimeout1),
+    row2: makeRowControls(row2Ref, interacting2, resumeTimeout2),
+  };
 }
 
 /** Measures an element's content-box width, updating on resize. */
@@ -161,7 +204,7 @@ const TrackTile = memo(function TrackTile({
       onClick={() => onSelect(track.id)}
       className={`track-tile relative shrink-0 w-32 sm:w-36 aspect-square overflow-hidden rounded-xl border transition-all duration-300 ${
         isSelected
-          ? "border-[#f97316] ring-2 ring-[#f97316]/60"
+          ? "border-2 border-[#f97316] desktop-fx:ring-2 desktop-fx:ring-[#f97316]/60"
           : "border-foreground/10 hover-safe:border-foreground/30"
       }`}
     >
@@ -323,8 +366,7 @@ export function MusicLibrarySection() {
   const cardStep = useCardStep();
 
   const browsing = query.trim().length === 0;
-  const row1 = useMarqueeRow(1, browsing);
-  const row2 = useMarqueeRow(-1, browsing);
+  const { row1, row2 } = useTwinMarquee(browsing);
 
   const handleSelect = useCallback((id: string) => setSelectedId(id), []);
 

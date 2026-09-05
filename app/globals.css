@@ -9,6 +9,7 @@
     }
   }
 }
+@custom-variant desktop-fx (@media (min-width: 769px));
 
 :root {
   --background: oklch(0.985 0.002 90);
@@ -206,6 +207,7 @@
 .track-tile-wrapper {
   content-visibility: auto;
   contain-intrinsic-size: 0 120px;
+  will-change: transform;
 }
 
 .track-tile {

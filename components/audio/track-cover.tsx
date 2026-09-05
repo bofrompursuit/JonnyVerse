@@ -27,6 +27,8 @@ export function TrackCover({ src, alt, className }: TrackCoverProps) {
       src={src}
       alt={alt}
       className={className}
+      width={144}
+      height={144}
       loading="lazy"
       decoding="async"
       onError={() => setFailed(true)}
