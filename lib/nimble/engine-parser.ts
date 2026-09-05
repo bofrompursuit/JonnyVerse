@@ -2,8 +2,9 @@ import { readdir, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { parseFile } from "music-metadata";
-import { NimbleClient } from "./nimble-client";
-import type { ParsedTrack } from "./types";
+import sharp from "sharp";
+import { NimbleClient } from "./nimble-client.ts";
+import type { ParsedTrack } from "./types.ts";
 
 const AUDIO_EXTENSIONS = new Set([".mp3", ".flac", ".wav", ".aiff", ".m4a", ".ogg"]);
 
@@ -74,12 +75,23 @@ async function parseTrackFile(filePath: string, nimble: NimbleClient | null): Pr
   let coverArtUrl: string | null = null;
   let thumbnailUrl: string | null = null;
 
-  const MAX_EMBEDDED_PICTURE_BYTES = 300_000;
   const embeddedPicture = common.picture?.[0];
-  if (embeddedPicture && embeddedPicture.data.length <= MAX_EMBEDDED_PICTURE_BYTES) {
-    coverArtUrl = `data:${embeddedPicture.format};base64,${Buffer.from(embeddedPicture.data).toString("base64")}`;
-    thumbnailUrl = coverArtUrl;
-  } else if (nimble) {
+  if (embeddedPicture) {
+    try {
+      // Downscale to a small thumbnail — embedded FLAC art can be several MB,
+      // which is unusable once base64-inlined across hundreds of tracks.
+      const thumbnail = await sharp(Buffer.from(embeddedPicture.data))
+        .resize(200, 200, { fit: "cover" })
+        .jpeg({ quality: 72 })
+        .toBuffer();
+      coverArtUrl = `data:image/jpeg;base64,${thumbnail.toString("base64")}`;
+      thumbnailUrl = coverArtUrl;
+    } catch (err) {
+      console.error(`[engine-parser] failed to downscale embedded art for ${filePath}:`, err);
+    }
+  }
+
+  if (!coverArtUrl && nimble) {
     const enriched = await nimble.findCoverArt(title, artist);
     if (enriched) {
       coverArtUrl = enriched.cover_art_url;

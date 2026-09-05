@@ -42,7 +42,7 @@ export function MusicLibrarySection() {
   useEffect(() => {
     let cancelled = false;
 
-    fetch("/api/library/tracks")
+    fetch("/tracks.json")
       .then((res) => res.json())
       .then((data: { tracks?: EngineTrack[]; error?: string }) => {
         if (cancelled) return;

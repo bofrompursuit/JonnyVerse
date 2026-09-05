@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import twilio from "twilio";
+import nodemailer from "nodemailer";
 
 interface BookingPayload {
   name: string;
@@ -37,25 +37,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "name and email are required" }, { status: 400 });
   }
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const from = process.env.TWILIO_WHATSAPP_FROM;
-  const to = process.env.BOOKING_WHATSAPP_TO;
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailAppPassword = process.env.GMAIL_APP_PASSWORD;
+  const notifyTo = process.env.BOOKING_NOTIFY_EMAIL || gmailUser;
 
-  if (!accountSid || !authToken || !from || !to) {
-    console.error("[booking] Missing Twilio configuration in environment variables");
+  if (!gmailUser || !gmailAppPassword || !notifyTo) {
+    console.error("[booking] Missing Gmail SMTP configuration in environment variables");
     return NextResponse.json({ error: "Booking notifications are not configured" }, { status: 500 });
   }
 
   try {
-    const client = twilio(accountSid, authToken);
-    await client.messages.create({
-      from: `whatsapp:${from.replace(/^whatsapp:/, "")}`,
-      to: `whatsapp:${to.replace(/^whatsapp:/, "")}`,
-      body: buildMessage(payload),
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: gmailUser, pass: gmailAppPassword },
+    });
+
+    await transporter.sendMail({
+      from: gmailUser,
+      to: notifyTo,
+      replyTo: payload.email,
+      subject: `New booking request — ${payload.name}`,
+      text: buildMessage(payload),
     });
   } catch (err) {
-    console.error("[booking] Failed to send WhatsApp notification:", err);
+    console.error("[booking] Failed to send booking notification email:", err);
     return NextResponse.json({ error: "Failed to send booking notification" }, { status: 502 });
   }
 
