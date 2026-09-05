@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronLeft, ChevronRight, Check, Search, Shuffle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,9 @@ interface EngineTrack {
 
 const SCROLL_STEP = 160; // card width (144) + gap (16)
 const AUTO_SCROLL_SPEED = 1.1;
+const CARD_GAP = 16;
+const CARD_WIDTH_MOBILE = 128; // w-32
+const CARD_WIDTH_DESKTOP = 144; // sm:w-36
 
 function shuffle<T>(items: T[]): T[] {
   const copy = [...items];
@@ -37,6 +41,21 @@ function shuffle<T>(items: T[]): T[] {
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
+}
+
+/** Tracks the sm breakpoint so the virtualizer's step size matches the card's actual rendered width. */
+function useCardStep() {
+  const [isSmUp, setIsSmUp] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 640px)");
+    const update = () => setIsSmUp(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  return (isSmUp ? CARD_WIDTH_DESKTOP : CARD_WIDTH_MOBILE) + CARD_GAP;
 }
 
 /** Drives one infinitely-looping row: centers on mount, auto-scrolls, pauses on interaction. */
@@ -108,23 +127,42 @@ function useMarqueeRow(direction: 1 | -1, active: boolean) {
   return { ref, pause, resumeSoon, handleScroll };
 }
 
-function TrackTile({
+/** Measures an element's content-box width, updating on resize. */
+function useElementWidth<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setWidth(el.clientWidth);
+    const observer = new ResizeObserver((entries) => {
+      setWidth(entries[0].contentRect.width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return [ref, width] as const;
+}
+
+const TrackTile = memo(function TrackTile({
   track,
   isSelected,
   onSelect,
 }: {
   track: Track;
   isSelected: boolean;
-  onSelect: () => void;
+  onSelect: (id: string) => void;
 }) {
   return (
     <button
       type="button"
-      onClick={onSelect}
-      className={`relative shrink-0 w-32 sm:w-36 aspect-square overflow-hidden rounded-xl border transition-all duration-300 ${
+      onClick={() => onSelect(track.id)}
+      className={`track-tile relative shrink-0 w-32 sm:w-36 aspect-square overflow-hidden rounded-xl border transition-all duration-300 ${
         isSelected
           ? "border-[#f97316] ring-2 ring-[#f97316]/60"
-          : "border-foreground/10 hover:border-foreground/30"
+          : "border-foreground/10 hover-safe:border-foreground/30"
       }`}
     >
       <TrackCover
@@ -135,7 +173,7 @@ function TrackTile({
       <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
 
       {track.bpm != null && (
-        <span className="absolute top-2 left-2 text-[10px] font-mono text-white/90 bg-black/40 px-1.5 py-0.5 rounded-full backdrop-blur-sm">
+        <span className="track-tile-badge absolute top-2 left-2 text-[10px] font-mono text-white/90 bg-black/40 px-1.5 py-0.5 rounded-full backdrop-blur-sm">
           {track.bpm} BPM
         </span>
       )}
@@ -147,11 +185,133 @@ function TrackTile({
 
       <div className="absolute bottom-0 left-0 right-0 p-3 text-left">
         <h3 className="font-display text-sm leading-tight text-white truncate">{track.title}</h3>
-        <p className="text-[11px] text-white/70 truncate">
-          {[track.artist, track.genre, track.duration].filter(Boolean).join(" · ")}
-        </p>
+        <p className="text-[11px] text-white/70 truncate">{track.artist}</p>
+        {(track.genre || track.duration) && (
+          <p className="track-tile-secondary text-[11px] text-white/50 truncate">
+            {[track.genre, track.duration].filter(Boolean).join(" · ")}
+          </p>
+        )}
       </div>
     </button>
+  );
+});
+
+/** One auto-scrolling, virtualized row of (tripled, looping) tracks. */
+function MarqueeRow({
+  items,
+  scrollRef,
+  onScroll,
+  onPointerDown,
+  onPointerUp,
+  onPointerLeave,
+  onTouchStart,
+  onTouchEnd,
+  cardStep,
+  selectedId,
+  onSelect,
+  rowLabel,
+  className = "",
+}: {
+  items: Track[];
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  onScroll: () => void;
+  onPointerDown: () => void;
+  onPointerUp: () => void;
+  onPointerLeave: () => void;
+  onTouchStart: () => void;
+  onTouchEnd: () => void;
+  cardStep: number;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  rowLabel: string;
+  className?: string;
+}) {
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => cardStep,
+    horizontal: true,
+    overscan: 6,
+  });
+
+  return (
+    <div
+      ref={scrollRef}
+      onScroll={onScroll}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerLeave}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      className={`track-scroll-container relative overflow-x-auto pb-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${className}`}
+    >
+      <div className="relative h-32 sm:h-36" style={{ width: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map((virtualItem) => {
+          const track = items[virtualItem.index];
+          return (
+            <div
+              key={`${rowLabel}-${track.id}-${virtualItem.index}`}
+              className="track-tile-wrapper absolute top-0 left-0"
+              style={{ transform: `translateX(${virtualItem.start}px)` }}
+            >
+              <TrackTile track={track} isSelected={track.id === selectedId} onSelect={onSelect} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Virtualized, row-chunked grid for search results (no natural fixed-size scroller otherwise). */
+function SearchGrid({
+  results,
+  query,
+  selectedId,
+  onSelect,
+  cardStep,
+}: {
+  results: Track[];
+  query: string;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  cardStep: number;
+}) {
+  const [scrollRef, width] = useElementWidth<HTMLDivElement>();
+  const columns = Math.max(1, Math.floor(width / cardStep));
+  const rowCount = Math.ceil(results.length / columns);
+
+  const rowVirtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => cardStep,
+    overscan: 4,
+  });
+
+  if (results.length === 0) {
+    return <p className="text-sm text-muted-foreground">No tracks match &quot;{query}&quot;.</p>;
+  }
+
+  return (
+    <div ref={scrollRef} className="track-scroll-container relative max-h-[70vh] overflow-y-auto">
+      <div className="relative" style={{ height: rowVirtualizer.getTotalSize() }}>
+        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+          const start = virtualRow.index * columns;
+          const rowItems = results.slice(start, start + columns);
+          return (
+            <div
+              key={virtualRow.index}
+              className="absolute top-0 left-0 flex gap-4 w-full"
+              style={{ transform: `translateY(${virtualRow.start}px)` }}
+            >
+              {rowItems.map((track) => (
+                <TrackTile key={track.id} track={track} isSelected={track.id === selectedId} onSelect={onSelect} />
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -160,10 +320,13 @@ export function MusicLibrarySection() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [query, setQuery] = useState("");
+  const cardStep = useCardStep();
 
   const browsing = query.trim().length === 0;
   const row1 = useMarqueeRow(1, browsing);
   const row2 = useMarqueeRow(-1, browsing);
+
+  const handleSelect = useCallback((id: string) => setSelectedId(id), []);
 
   const selectedTrack = tracks.find((t) => t.id === selectedId) ?? null;
 
@@ -291,60 +454,44 @@ export function MusicLibrarySection() {
 
         {browsing ? (
           <>
-            <div
-              ref={row1.ref}
+            <MarqueeRow
+              items={row1Looped}
+              scrollRef={row1.ref}
               onScroll={row1.handleScroll}
               onPointerDown={row1.pause}
               onPointerUp={row1.resumeSoon}
               onPointerLeave={row1.resumeSoon}
               onTouchStart={row1.pause}
               onTouchEnd={row1.resumeSoon}
-              className="flex gap-4 overflow-x-auto pb-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-            >
-              {row1Looped.map((track, i) => (
-                <TrackTile
-                  key={`r1-${track.id}-${i}`}
-                  track={track}
-                  isSelected={track.id === selectedId}
-                  onSelect={() => setSelectedId(track.id)}
-                />
-              ))}
-            </div>
-            <div
-              ref={row2.ref}
+              cardStep={cardStep}
+              selectedId={selectedId}
+              onSelect={handleSelect}
+              rowLabel="r1"
+            />
+            <MarqueeRow
+              items={row2Looped}
+              scrollRef={row2.ref}
               onScroll={row2.handleScroll}
               onPointerDown={row2.pause}
               onPointerUp={row2.resumeSoon}
               onPointerLeave={row2.resumeSoon}
               onTouchStart={row2.pause}
               onTouchEnd={row2.resumeSoon}
-              className="flex gap-4 overflow-x-auto pb-4 mt-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-            >
-              {row2Looped.map((track, i) => (
-                <TrackTile
-                  key={`r2-${track.id}-${i}`}
-                  track={track}
-                  isSelected={track.id === selectedId}
-                  onSelect={() => setSelectedId(track.id)}
-                />
-              ))}
-            </div>
+              cardStep={cardStep}
+              selectedId={selectedId}
+              onSelect={handleSelect}
+              rowLabel="r2"
+              className="mt-4"
+            />
           </>
         ) : (
-          <div className="flex flex-wrap gap-4">
-            {searchResults.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No tracks match &quot;{query}&quot;.</p>
-            ) : (
-              searchResults.map((track) => (
-                <TrackTile
-                  key={track.id}
-                  track={track}
-                  isSelected={track.id === selectedId}
-                  onSelect={() => setSelectedId(track.id)}
-                />
-              ))
-            )}
-          </div>
+          <SearchGrid
+            results={searchResults}
+            query={query}
+            selectedId={selectedId}
+            onSelect={handleSelect}
+            cardStep={cardStep}
+          />
         )}
 
         {browsing && (

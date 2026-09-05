@@ -2,6 +2,13 @@
 @import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant hover-safe {
+  @media (hover: hover) {
+    &:hover {
+      @slot;
+    }
+  }
+}
 
 :root {
   --background: oklch(0.985 0.002 90);
@@ -183,9 +190,31 @@
   
   .border-sketch {
     border: 1px solid transparent;
-    background: 
+    background:
       linear-gradient(var(--background), var(--background)) padding-box,
       linear-gradient(135deg, var(--foreground) 25%, transparent 25%, transparent 50%, var(--foreground) 50%, var(--foreground) 75%, transparent 75%) border-box;
     background-size: 100% 100%, 8px 8px;
+  }
+}
+
+/* Music library tracklist: mobile rendering & touch perf */
+.track-scroll-container {
+  contain: content;
+  -webkit-overflow-scrolling: touch;
+}
+
+.track-tile-wrapper {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 120px;
+}
+
+.track-tile {
+  touch-action: manipulation;
+}
+
+@media (max-width: 768px) {
+  .track-tile-badge,
+  .track-tile-secondary {
+    display: none;
   }
 }
