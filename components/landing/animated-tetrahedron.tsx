@@ -16,11 +16,27 @@ export function AnimatedTetrahedron() {
     const chars = "░▒▓█▀▄▌▐│─┤├┴┬╭╮╰╯";
     let time = 0;
 
+    const isMobile = window.matchMedia("(max-width: 767px)").matches;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const edgeStep = isMobile ? 0.1 : 0.05;
+    const faceStep = isMobile ? 0.22 : 0.12;
+    const frameInterval = isMobile ? 1000 / 30 : 1000 / 60;
+
+    let visible = true;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        visible = entry.isIntersecting;
+      },
+      { threshold: 0 },
+    );
+    observer.observe(canvas);
+
     const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 2);
       const rect = canvas.getBoundingClientRect();
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
     };
 
@@ -67,7 +83,9 @@ export function AnimatedTetrahedron() {
       z: point.z,
     });
 
-    const render = () => {
+    let lastFrame = 0;
+
+    const draw = () => {
       const rect = canvas.getBoundingClientRect();
       ctx.clearRect(0, 0, rect.width, rect.height);
 
@@ -86,7 +104,7 @@ export function AnimatedTetrahedron() {
         const v1 = vertices[i];
         const v2 = vertices[j];
 
-        for (let t = 0; t <= 1; t += 0.05) {
+        for (let t = 0; t <= 1; t += edgeStep) {
           let point = {
             x: v1.x + (v2.x - v1.x) * t,
             y: v1.y + (v2.y - v1.y) * t,
@@ -116,8 +134,8 @@ export function AnimatedTetrahedron() {
         const v2 = vertices[j];
         const v3 = vertices[k];
 
-        for (let u = 0; u <= 1; u += 0.12) {
-          for (let v = 0; v <= 1 - u; v += 0.12) {
+        for (let u = 0; u <= 1; u += faceStep) {
+          for (let v = 0; v <= 1 - u; v += faceStep) {
             const w = 1 - u - v;
             let point = {
               x: v1.x * u + v2.x * v + v3.x * w,
@@ -154,13 +172,23 @@ export function AnimatedTetrahedron() {
       });
 
       time += 0.015;
-      frameRef.current = requestAnimationFrame(render);
     };
 
-    render();
+    draw();
+
+    if (!reduceMotion) {
+      const render = (now: number) => {
+        frameRef.current = requestAnimationFrame(render);
+        if (!visible || now - lastFrame < frameInterval) return;
+        lastFrame = now;
+        draw();
+      };
+      frameRef.current = requestAnimationFrame(render);
+    }
 
     return () => {
       window.removeEventListener("resize", resize);
+      observer.disconnect();
       cancelAnimationFrame(frameRef.current);
     };
   }, []);

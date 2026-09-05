@@ -54,10 +54,17 @@ function useMarqueeRow(direction: 1 | -1, active: boolean) {
   useEffect(() => {
     const el = ref.current;
     if (!el || !active) return;
+
+    let visible = true;
+    const observer = new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting;
+    }, { threshold: 0 });
+    observer.observe(el);
+
     let raf: number;
 
     const tick = () => {
-      if (!interacting.current) {
+      if (visible && !interacting.current) {
         const setWidth = el.scrollWidth / 3;
         el.scrollLeft += direction * AUTO_SCROLL_SPEED;
         if (el.scrollLeft >= setWidth * 2) {
@@ -69,7 +76,10 @@ function useMarqueeRow(direction: 1 | -1, active: boolean) {
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(raf);
+    };
   }, [active, direction]);
 
   function pause() {

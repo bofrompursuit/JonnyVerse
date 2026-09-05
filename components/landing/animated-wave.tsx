@@ -16,18 +16,35 @@ export function AnimatedWave() {
     const chars = "·∘○◯◌●◉";
     let time = 0;
 
+    const isMobile = window.matchMedia("(max-width: 767px)").matches;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const cellSize = isMobile ? 32 : 20;
+    const frameInterval = isMobile ? 1000 / 30 : 1000 / 60;
+
+    let visible = true;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        visible = entry.isIntersecting;
+      },
+      { threshold: 0 },
+    );
+    observer.observe(canvas);
+
     const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 2);
       const rect = canvas.getBoundingClientRect();
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
     };
 
     resize();
     window.addEventListener("resize", resize);
 
-    const render = () => {
+    let lastFrame = 0;
+
+    const draw = () => {
       const rect = canvas.getBoundingClientRect();
       ctx.clearRect(0, 0, rect.width, rect.height);
 
@@ -35,8 +52,8 @@ export function AnimatedWave() {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
-      const cols = Math.floor(rect.width / 20);
-      const rows = Math.floor(rect.height / 20);
+      const cols = Math.floor(rect.width / cellSize);
+      const rows = Math.floor(rect.height / cellSize);
 
       for (let y = 0; y < rows; y++) {
         for (let x = 0; x < cols; x++) {
@@ -60,13 +77,23 @@ export function AnimatedWave() {
       }
 
       time += 0.03;
-      frameRef.current = requestAnimationFrame(render);
     };
 
-    render();
+    draw();
+
+    if (!reduceMotion) {
+      const render = (now: number) => {
+        frameRef.current = requestAnimationFrame(render);
+        if (!visible || now - lastFrame < frameInterval) return;
+        lastFrame = now;
+        draw();
+      };
+      frameRef.current = requestAnimationFrame(render);
+    }
 
     return () => {
       window.removeEventListener("resize", resize);
+      observer.disconnect();
       cancelAnimationFrame(frameRef.current);
     };
   }, []);

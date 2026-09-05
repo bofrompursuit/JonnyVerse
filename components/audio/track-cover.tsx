@@ -23,6 +23,13 @@ export function TrackCover({ src, alt, className }: TrackCoverProps) {
 
   return (
     // eslint-disable-next-line @next/next/no-img-element -- sources are arbitrary external/local URLs not known at build time
-    <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+    />
   );
 }

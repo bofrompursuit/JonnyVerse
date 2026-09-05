@@ -16,18 +16,35 @@ export function AnimatedSphere() {
     const chars = "░▒▓█▀▄▌▐│─┤├┴┬╭╮╰╯";
     let time = 0;
 
+    const isMobile = window.matchMedia("(max-width: 767px)").matches;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const angleStep = isMobile ? 0.26 : 0.15;
+    const frameInterval = isMobile ? 1000 / 30 : 1000 / 60;
+
+    let visible = true;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        visible = entry.isIntersecting;
+      },
+      { threshold: 0 },
+    );
+    observer.observe(canvas);
+
     const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 2);
       const rect = canvas.getBoundingClientRect();
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
     };
 
     resize();
     window.addEventListener("resize", resize);
 
-    const render = () => {
+    let lastFrame = 0;
+
+    const draw = () => {
       const rect = canvas.getBoundingClientRect();
       ctx.clearRect(0, 0, rect.width, rect.height);
 
@@ -43,8 +60,8 @@ export function AnimatedSphere() {
       const points: { x: number; y: number; z: number; char: string }[] = [];
 
       // Generate sphere points
-      for (let phi = 0; phi < Math.PI * 2; phi += 0.15) {
-        for (let theta = 0; theta < Math.PI; theta += 0.15) {
+      for (let phi = 0; phi < Math.PI * 2; phi += angleStep) {
+        for (let theta = 0; theta < Math.PI; theta += angleStep) {
           const x = Math.sin(theta) * Math.cos(phi + time * 0.5);
           const y = Math.sin(theta) * Math.sin(phi + time * 0.5);
           const z = Math.cos(theta);
@@ -82,13 +99,23 @@ export function AnimatedSphere() {
       });
 
       time += 0.02;
-      frameRef.current = requestAnimationFrame(render);
     };
 
-    render();
+    draw();
+
+    if (!reduceMotion) {
+      const render = (now: number) => {
+        frameRef.current = requestAnimationFrame(render);
+        if (!visible || now - lastFrame < frameInterval) return;
+        lastFrame = now;
+        draw();
+      };
+      frameRef.current = requestAnimationFrame(render);
+    }
 
     return () => {
       window.removeEventListener("resize", resize);
+      observer.disconnect();
       cancelAnimationFrame(frameRef.current);
     };
   }, []);
