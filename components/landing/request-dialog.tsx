@@ -53,6 +53,8 @@ type FormState = {
   email: string;
   date: string;
   venue: string;
+  eventType: string;
+  budget: string;
   level: string;
   message: string;
 };
@@ -62,16 +64,19 @@ const emptyForm: FormState = {
   email: "",
   date: "",
   venue: "",
+  eventType: "",
+  budget: "",
   level: "",
   message: "",
 };
 
 export function RequestDialog({ kind, trigger, trackTitle }: RequestDialogProps) {
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<"preview" | "form" | "sent">(
+  const [step, setStep] = useState<"preview" | "form" | "sent" | "error">(
     kind === "bootcamp" ? "preview" : "form"
   );
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [submitting, setSubmitting] = useState(false);
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
@@ -104,8 +109,34 @@ export function RequestDialog({ kind, trigger, trackTitle }: RequestDialogProps)
     return `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+
+    if (kind === "booking") {
+      setSubmitting(true);
+      try {
+        const res = await fetch("/api/booking", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: form.name,
+            email: form.email,
+            eventDate: form.date,
+            eventType: form.eventType,
+            location: form.venue,
+            budget: form.budget,
+            message: form.message,
+          }),
+        });
+        setStep(res.ok ? "sent" : "error");
+      } catch {
+        setStep("error");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     window.location.href = buildMailto();
     setStep("sent");
   }
@@ -229,26 +260,58 @@ export function RequestDialog({ kind, trigger, trackTitle }: RequestDialogProps)
               )}
 
               {kind === "booking" && (
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="rd-date">Event date</Label>
-                    <Input
-                      id="rd-date"
-                      type="date"
-                      value={form.date}
-                      onChange={handleChange("date")}
-                    />
+                <>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="rd-date">Event date</Label>
+                      <Input
+                        id="rd-date"
+                        type="date"
+                        value={form.date}
+                        onChange={handleChange("date")}
+                      />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="rd-venue">Venue / location</Label>
+                      <Input
+                        id="rd-venue"
+                        value={form.venue}
+                        onChange={handleChange("venue")}
+                        placeholder="Venue or city"
+                      />
+                    </div>
                   </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="rd-venue">Venue / location</Label>
-                    <Input
-                      id="rd-venue"
-                      value={form.venue}
-                      onChange={handleChange("venue")}
-                      placeholder="Venue or city"
-                    />
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="rd-event-type">Event type</Label>
+                      <select
+                        id="rd-event-type"
+                        value={form.eventType}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, eventType: e.target.value }))
+                        }
+                        className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      >
+                        <option value="">Select one</option>
+                        <option value="Wedding">Wedding</option>
+                        <option value="Club night">Club night</option>
+                        <option value="Private party">Private party</option>
+                        <option value="Corporate">Corporate</option>
+                        <option value="Festival">Festival</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="rd-budget">Budget</Label>
+                      <Input
+                        id="rd-budget"
+                        value={form.budget}
+                        onChange={handleChange("budget")}
+                        placeholder="e.g. $800–$1,200"
+                      />
+                    </div>
                   </div>
-                </div>
+                </>
               )}
 
               <div className="grid gap-1.5">
@@ -272,9 +335,10 @@ export function RequestDialog({ kind, trigger, trackTitle }: RequestDialogProps)
               <DialogFooter className="mt-2">
                 <Button
                   type="submit"
-                  className="w-full sm:w-auto bg-foreground hover:bg-foreground/90 text-background rounded-full"
+                  disabled={submitting}
+                  className="w-full sm:w-auto bg-foreground hover:bg-foreground/90 text-background rounded-full disabled:opacity-60"
                 >
-                  Send Request
+                  {submitting ? "Sending…" : "Send Request"}
                 </Button>
               </DialogFooter>
             </form>
@@ -284,14 +348,22 @@ export function RequestDialog({ kind, trigger, trackTitle }: RequestDialogProps)
         {step === "sent" && (
           <div className="flex flex-col items-center text-center gap-4 py-8">
             <CheckCircle2 className="w-12 h-12 text-[#f97316]" />
-            <DialogTitle className="font-display text-2xl">Request ready</DialogTitle>
+            <DialogTitle className="font-display text-2xl">
+              {kind === "booking" ? "Request sent to the DJ" : "Request ready"}
+            </DialogTitle>
             <DialogDescription className="max-w-sm">
-              Your email client should have opened with the request pre-filled.
-              If it didn&apos;t, email us directly at{" "}
-              <a href={`mailto:${CONTACT_EMAIL}`} className="text-foreground underline">
-                {CONTACT_EMAIL}
-              </a>
-              .
+              {kind === "booking" ? (
+                "We've sent your booking details straight to the DJ. Expect a follow-up soon."
+              ) : (
+                <>
+                  Your email client should have opened with the request pre-filled.
+                  If it didn&apos;t, email us directly at{" "}
+                  <a href={`mailto:${CONTACT_EMAIL}`} className="text-foreground underline">
+                    {CONTACT_EMAIL}
+                  </a>
+                  .
+                </>
+              )}
             </DialogDescription>
             <Button
               variant="outline"
@@ -300,6 +372,27 @@ export function RequestDialog({ kind, trigger, trackTitle }: RequestDialogProps)
             >
               Close
             </Button>
+          </div>
+        )}
+
+        {step === "error" && (
+          <div className="flex flex-col items-center text-center gap-4 py-8">
+            <DialogTitle className="font-display text-2xl">Couldn&apos;t send that</DialogTitle>
+            <DialogDescription className="max-w-sm">
+              Something went wrong sending your booking request. Email us directly at{" "}
+              <a href={`mailto:${CONTACT_EMAIL}`} className="text-foreground underline">
+                {CONTACT_EMAIL}
+              </a>{" "}
+              or try again.
+            </DialogDescription>
+            <div className="flex gap-2">
+              <Button variant="outline" className="rounded-full" onClick={() => setStep("form")}>
+                Try again
+              </Button>
+              <Button className="rounded-full" onClick={() => handleOpenChange(false)}>
+                Close
+              </Button>
+            </div>
           </div>
         )}
       </DialogContent>

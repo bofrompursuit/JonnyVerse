@@ -1,51 +1,84 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Play, ChevronLeft, ChevronRight, Check } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RequestDialog } from "./request-dialog";
+import { TrackCover } from "@/components/audio/track-cover";
 
 type Track = {
   id: string;
   title: string;
-  genre: string;
-  bpm: number;
-  duration: string;
+  artist: string;
+  genre: string | null;
+  bpm: number | null;
+  duration: string | null;
+  coverArtUrl: string | null;
 };
 
-const tracks: Track[] = [
-  { id: "t1", title: "Neon Skyline", genre: "Melodic House", bpm: 122, duration: "5:14" },
-  { id: "t2", title: "Warehouse Riot", genre: "Techno", bpm: 132, duration: "6:02" },
-  { id: "t3", title: "Late Night Static", genre: "Deep House", bpm: 120, duration: "4:48" },
-  { id: "t4", title: "Afterglow", genre: "Melodic Techno", bpm: 124, duration: "5:37" },
-  { id: "t5", title: "Midnight Drive", genre: "Progressive House", bpm: 126, duration: "6:15" },
-  { id: "t6", title: "Basement Frequency", genre: "Bass House", bpm: 128, duration: "4:52" },
-  { id: "t7", title: "Solar Flare", genre: "Trance", bpm: 136, duration: "6:40" },
-  { id: "t8", title: "Glass City", genre: "Techno", bpm: 130, duration: "5:28" },
-  { id: "t9", title: "Analog Dreams", genre: "Melodic House", bpm: 121, duration: "5:05" },
-  { id: "t10", title: "Velvet Circuit", genre: "Deep House", bpm: 119, duration: "4:33" },
-  { id: "t11", title: "Chrome Horizon", genre: "Melodic Techno", bpm: 125, duration: "5:51" },
-  { id: "t12", title: "Electric Bloom", genre: "Progressive House", bpm: 123, duration: "6:08" },
-];
-
-// Tripled for a seamless infinite illusion — middle copy is the "real" scroll zone.
-const loopedTracks = [...tracks, ...tracks, ...tracks];
+interface EngineTrack {
+  engine_dj_id: string;
+  title: string;
+  artist: string;
+  genre: string | null;
+  bpm: number | null;
+  duration: string | null;
+  cover_art_url: string | null;
+}
 
 export function MusicLibrarySection() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const interacting = useRef(false);
   const resumeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Tripled for a seamless infinite illusion — middle copy is the "real" scroll zone.
+  const loopedTracks = useMemo(() => [...tracks, ...tracks, ...tracks], [tracks]);
+
   const selectedTrack = tracks.find((t) => t.id === selectedId) ?? null;
 
-  // Center the scroll position on the middle copy after mount.
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/library/tracks")
+      .then((res) => res.json())
+      .then((data: { tracks?: EngineTrack[]; error?: string }) => {
+        if (cancelled) return;
+        if (data.error || !data.tracks) {
+          setStatus("error");
+          return;
+        }
+        setTracks(
+          data.tracks.map((t) => ({
+            id: t.engine_dj_id,
+            title: t.title,
+            artist: t.artist,
+            genre: t.genre,
+            bpm: t.bpm,
+            duration: t.duration,
+            coverArtUrl: t.cover_art_url,
+          })),
+        );
+        setStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Center the scroll position on the middle copy once tracks load.
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el || tracks.length === 0) return;
     const setWidth = el.scrollWidth / 3;
     el.scrollLeft = setWidth;
-  }, []);
+  }, [tracks.length]);
 
   // Auto-scroll loop, paused while the user is interacting.
   useEffect(() => {
@@ -56,7 +89,7 @@ export function MusicLibrarySection() {
     const tick = () => {
       if (!interacting.current) {
         const setWidth = el.scrollWidth / 3;
-        el.scrollLeft += 0.6;
+        el.scrollLeft += 1.1;
         if (el.scrollLeft >= setWidth * 2) {
           el.scrollLeft -= setWidth;
         } else if (el.scrollLeft <= 0) {
@@ -85,7 +118,7 @@ export function MusicLibrarySection() {
     const el = scrollRef.current;
     if (!el) return;
     pause();
-    el.scrollBy({ left: direction * 240, behavior: "smooth" });
+    el.scrollBy({ left: direction * 192, behavior: "smooth" });
     resumeSoon();
   }
 
@@ -125,6 +158,18 @@ export function MusicLibrarySection() {
 
       {/* Rolodex */}
       <div className="relative max-w-[1400px] mx-auto px-6 lg:px-12">
+        {status === "loading" && (
+          <p className="text-sm text-muted-foreground mb-4">Loading the library from the booth…</p>
+        )}
+        {status === "error" && (
+          <p className="text-sm text-muted-foreground mb-4">
+            Couldn&apos;t reach the library right now — try again in a bit.
+          </p>
+        )}
+        {status === "ready" && tracks.length === 0 && (
+          <p className="text-sm text-muted-foreground mb-4">No tracks in the library yet.</p>
+        )}
+
         <div
           ref={scrollRef}
           onScroll={handleScroll}
@@ -142,36 +187,38 @@ export function MusicLibrarySection() {
                 key={`${track.id}-${i}`}
                 type="button"
                 onClick={() => setSelectedId(track.id)}
-                className={`shrink-0 w-52 sm:w-56 snap-center text-left p-5 border rounded-xl transition-all duration-300 ${
+                className={`relative shrink-0 w-44 sm:w-48 aspect-square snap-center overflow-hidden rounded-xl border transition-all duration-300 ${
                   isSelected
-                    ? "border-[#f97316] bg-[#f97316]/5"
+                    ? "border-[#f97316] ring-2 ring-[#f97316]/60"
                     : "border-foreground/10 hover:border-foreground/30"
                 }`}
               >
-                <div className="flex items-center justify-between mb-8">
-                  <div
-                    className={`w-9 h-9 rounded-full flex items-center justify-center border ${
-                      isSelected
-                        ? "border-[#f97316] text-[#f97316]"
-                        : "border-foreground/20 text-foreground/50"
-                    }`}
-                  >
-                    {isSelected ? (
-                      <Check className="w-4 h-4" />
-                    ) : (
-                      <Play className="w-3.5 h-3.5 ml-0.5" />
-                    )}
-                  </div>
-                  <span className="text-xs font-mono text-muted-foreground">
+                <TrackCover
+                  src={track.coverArtUrl}
+                  alt={`${track.title} cover art`}
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
+
+                {track.bpm != null && (
+                  <span className="absolute top-3 left-3 text-[11px] font-mono text-white/90 bg-black/40 px-2 py-0.5 rounded-full backdrop-blur-sm">
                     {track.bpm} BPM
                   </span>
+                )}
+                {isSelected && (
+                  <span className="absolute top-3 right-3 w-7 h-7 rounded-full bg-[#f97316] text-white flex items-center justify-center">
+                    <Check className="w-4 h-4" />
+                  </span>
+                )}
+
+                <div className="absolute bottom-0 left-0 right-0 p-4 text-left">
+                  <h3 className="font-display text-base sm:text-lg leading-tight text-white truncate">
+                    {track.title}
+                  </h3>
+                  <p className="text-xs text-white/70 truncate">
+                    {[track.artist, track.genre, track.duration].filter(Boolean).join(" · ")}
+                  </p>
                 </div>
-                <h3 className="font-display text-xl mb-1 leading-tight">
-                  {track.title}
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  {track.genre} · {track.duration}
-                </p>
               </button>
             );
           })}
