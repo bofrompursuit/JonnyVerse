@@ -11,13 +11,12 @@ const linkColumns: Record<string, LinkItem[]> = {
   Music: [
     { name: "Music Library", type: "link", href: "#library" },
     { name: "DJ Bootcamp", type: "dialog", kind: "bootcamp" },
-    { name: "Book an Event", type: "dialog", kind: "booking" },
   ],
   Community: [
     { name: "Join Discord Community", type: "link", href: "#cta" },
   ],
   Contact: [
-    { name: "bookings@jonnyverse.com", type: "link", href: "mailto:bookings@jonnyverse.com" },
+    { name: "Book an Event", type: "dialog", kind: "booking" },
     { name: "Tip Your DJ", type: "link", href: "https://venmo.com/u/jonnypurse" },
   ],
   Legal: [
